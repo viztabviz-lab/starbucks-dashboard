@@ -4,114 +4,94 @@ from datetime import datetime, timezone, timedelta
 
 KST = timezone(timedelta(hours=9))
 
-REGIONS = [
-    "서울","경기","인천","강원","충북","충남","대전",
-    "경북","경남","부산","울산","대구","전북","전남",
-    "광주","제주","세종"
-]
+SIDO = {
+    "서울":("01","37.5665","126.9780"), "경기":("02","37.4138","127.5183"),
+    "인천":("03","37.4563","126.7052"), "강원":("04","37.8228","128.1555"),
+    "충북":("05","36.6357","127.4912"), "충남":("06","36.5184","126.8000"),
+    "대전":("07","36.3504","127.3845"), "경북":("08","36.4919","128.8889"),
+    "경남":("09","35.4606","128.2132"), "부산":("10","35.1796","129.0756"),
+    "울산":("11","35.5384","129.3114"), "대구":("12","35.8714","128.6014"),
+    "전북":("13","35.8202","127.1089"), "전남":("14","34.8679","126.9910"),
+    "광주":("15","35.1595","126.8526"), "제주":("16","33.4996","126.5312"),
+    "세종":("17","36.4801","127.2890"),
+}
 
-def extract_from_dom(page, region):
-    stores = []
-    try:
-        items = page.query_selector_all('[data-name][data-lat][data-long]')
-        for el in items:
-            name = el.get_attribute('data-name') or ''
-            lat  = el.get_attribute('data-lat')  or ''
-            lng  = el.get_attribute('data-long') or ''
-            addr_el = el.query_selector('.result_details, .addr, .address')
-            addr = addr_el.inner_text().strip() if addr_el else el.inner_text().strip()[:80]
-            if name and lat and lng:
-                stores.append({
-                    'r': region, 'n': name.strip(),
-                    'a': addr.replace('1522-3232','').strip(),
-                    'lat': round(float(lat), 5),
-                    'lng': round(float(lng), 5),
-                    'dt': 1 if ('DT' in name or '드라이브' in name) else 0,
-                    'rv': 1 if (name.endswith(' R') or '리저브' in name) else 0,
-                })
-    except Exception as e:
-        print(f"  DOM 추출 오류: {e}")
-    return stores
+def to_store(s, region):
+    name = s.get('s_name', s.get('name', '')).strip()
+    addr = s.get('address', s.get('addr', '')).replace('1522-3232','').strip()
+    lat  = s.get('lat','')
+    lng  = s.get('lot', s.get('lng', s.get('longitude','')))
+    if not name or not lat or not lng:
+        return None
+    return {
+        'r': region, 'n': name, 'a': addr,
+        'lat': round(float(lat),5), 'lng': round(float(lng),5),
+        'dt': 1 if ('DT' in name or '드라이브' in name) else 0,
+        'rv': 1 if (name.endswith(' R') or '리저브' in name) else 0,
+    }
 
 def scrape():
     all_stores = []
-    api_stores = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(
+            headless=True,
+            args=['--no-sandbox','--disable-dev-shm-usage']
+        )
         ctx = browser.new_context(
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
-            locale='ko-KR'
+            locale='ko-KR',
         )
         page = ctx.new_page()
 
-        # API 응답 가로채기
-        def on_response(response):
-            if response.status != 200: return
+        print("스타벅스 페이지 접속 중...")
+        page.goto(
+            'https://www.starbucks.co.kr/store/store_map.do?disp=locale',
+            wait_until='networkidle', timeout=30000
+        )
+        page.wait_for_timeout(3000)
+        print(f"접속 완료: {page.title()}")
+
+        for region, (sido_cd, lat, lng) in SIDO.items():
+            print(f"  [{region}] 수집 중...", end=' ', flush=True)
             try:
-                if 'json' not in response.headers.get('content-type',''):
-                    return
-                data = response.json()
-                stores = data.get('list', data.get('stores', []))
-                if not stores: return
-                for s in stores:
-                    name = s.get('s_name', s.get('name','')).strip()
-                    addr = s.get('address', s.get('addr','')).replace('1522-3232','').strip()
-                    lat  = s.get('lat','')
-                    lng  = s.get('lot', s.get('lng', s.get('longitude','')))
-                    if name and lat and lng:
-                        api_stores.append({
-                            'r': '미분류', 'n': name, 'a': addr,
-                            'lat': round(float(lat),5), 'lng': round(float(lng),5),
-                            'dt': 1 if ('DT' in name or '드라이브' in name) else 0,
-                            'rv': 1 if (name.endswith(' R') or '리저브' in name) else 0,
-                        })
-                print(f"  API 응답: {response.url.split('/')[-1]} ({len(stores)}개)")
-            except: pass
+                result = page.evaluate(f"""
+                async () => {{
+                    try {{
+                        const r = await fetch('/store/getStoreListJson.do', {{
+                            method: 'POST',
+                            credentials: 'include',
+                            headers: {{
+                                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'Accept': 'application/json, text/javascript, */*; q=0.01'
+                            }},
+                            body: new URLSearchParams({{
+                                ins_lat: '{lat}', ins_lng: '{lng}',
+                                p_sido_cd: '{sido_cd}', p_gugun_cd: '',
+                                in_biz_cd: '', set_date: '', iend: '2000'
+                            }}).toString()
+                        }});
+                        if (!r.ok) return {{error: r.status}};
+                        return await r.json();
+                    }} catch(e) {{
+                        return {{error: e.message}};
+                    }}
+                }}
+                """)
 
-        page.on('response', on_response)
+                if result and 'list' in result:
+                    stores = [to_store(s, region) for s in result['list']]
+                    stores = [s for s in stores if s]
+                    all_stores.extend(stores)
+                    print(f"{len(stores)}개")
+                else:
+                    print(f"응답 없음: {result}")
 
-        print("페이지 접속 중...")
-        page.goto('https://www.starbucks.co.kr/store/store_map.do?disp=locale',
-                  wait_until='networkidle', timeout=30000)
-        page.wait_for_timeout(2000)
+            except Exception as e:
+                print(f"오류: {e}")
 
-        # 지역 버튼 탐색
-        region_buttons = {}
-        for btn in page.query_selector_all('a, button, li, span'):
-            try:
-                text = btn.inner_text().strip()
-                if text in REGIONS and text not in region_buttons:
-                    region_buttons[text] = btn
-            except: pass
-
-        print(f"지역 버튼 발견: {list(region_buttons.keys())}")
-
-        if region_buttons:
-            for region in REGIONS:
-                if region not in region_buttons:
-                    continue
-                print(f"\n[{region}] 클릭 중...")
-                api_stores.clear()
-                try:
-                    region_buttons[region].click()
-                    page.wait_for_timeout(2500)
-                    # API 먼저, 없으면 DOM
-                    if api_stores:
-                        for s in api_stores:
-                            s['r'] = region
-                        all_stores.extend(api_stores)
-                        print(f"  API → {len(api_stores)}개")
-                    else:
-                        dom = extract_from_dom(page, region)
-                        all_stores.extend(dom)
-                        print(f"  DOM → {len(dom)}개")
-                except Exception as e:
-                    print(f"  오류: {e}")
-        else:
-            print("지역 버튼을 찾지 못했습니다. API 전체 수집 시도...")
-            page.wait_for_timeout(3000)
-            all_stores = api_stores[:]
+            page.wait_for_timeout(400)
 
         browser.close()
 
@@ -128,18 +108,18 @@ def build_summary(stores):
         region_stats[r]['rv']    += s['rv']
         parts = s['a'].split()
         if len(parts) >= 2:
-            gu_count[parts[1]] = gu_count.get(parts[1], 0) + 1
+            gu_count[parts[1]] = gu_count.get(parts[1],0) + 1
     return region_stats, sorted(gu_count.items(), key=lambda x:-x[1])[:15]
 
 if __name__ == '__main__':
-    print("=" * 50)
+    print("="*50)
     print("  스타벅스 코리아 전국 매장 데이터 수집")
-    print("=" * 50)
+    print("="*50)
     stores = scrape()
-    print(f"\n총 수집: {len(stores)}개")
+    print(f"\n총 수집: {len(stores):,}개")
 
     if not stores:
-        print("수집 실패 — 스타벅스 웹사이트 구조를 확인하세요.")
+        print("수집 실패")
         exit(1)
 
     region_stats, top_gu = build_summary(stores)
@@ -153,6 +133,7 @@ if __name__ == '__main__':
         'top_gu':       top_gu,
         'stores':       stores,
     }
-    with open('data/stores.json', 'w', encoding='utf-8') as f:
+    with open('data/stores.json','w',encoding='utf-8') as f:
         json.dump(payload, f, ensure_ascii=False, separators=(',',':'))
-    print(f"저장 완료: data/stores.json ({os.path.getsize('data/stores.json')//1024} KB)")
+    kb = os.path.getsize('data/stores.json')//1024
+    print(f"저장 완료: data/stores.json ({kb} KB)")
