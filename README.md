@@ -32,7 +32,7 @@ cd starbucks-dashboard
 # 파일 복사 후
 git add .
 git commit -m "초기 커밋"
-git remote add origin https://github.com/YOUR_USERNAME/starbucks-dashboard.git
+git remote add origin https://viztabviz-lab.github.io/starbucks-dashboard.git
 git push -u origin main
 ```
 
@@ -42,7 +42,7 @@ git push -u origin main
 2. Source: **Deploy from a branch**
 3. Branch: **main** / **/ (root)**
 4. **Save** 클릭
-5. 약 2~3분 후 `https://YOUR_USERNAME.github.io/starbucks-dashboard/` 접근 가능
+5. 약 2~3분 후 `https://viztabviz-lab.github.io/starbucks-dashboard/` 접근 가능
 
 ### 3. GitHub Actions 권한 설정
 
