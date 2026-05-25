@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>☕ 스타벅스 코리아 전국 매장 현황</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css"/>
+<style>
+:root {
+  --green:    #006241;
+  --green-lt: #00A862;
+  --green-bg: #E8F5EE;
+  --cream:    #F9F6F1;
+  --gold:     #CDA882;
+  --text:     #1A1A1A;
+  --text-2:   #5A5A5A;
+  --text-3:   #909090;
+  --border:   rgba(0,0,0,0.09);
+  --card:     #FFFFFF;
+  --radius:   12px;
+  --shadow:   0 2px 16px rgba(0,98,65,0.08);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Noto Sans KR', sans-serif;
+  background: var(--cream);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* ── 헤더 ── */
+header {
+  background: var(--green);
+  color: #fff;
+  padding: 22px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+}
+.logo { display: flex; align-items: center; gap: 12px; }
+.logo-icon {
+  width: 36px; height: 36px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.logo h1 { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
+.logo span { font-size: 12px; opacity: 0.7; font-weight: 300; margin-top: 1px; display: block; }
+.header-right { display: flex; align-items: center; gap: 12px; }
+.update-badge {
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 20px;
+  padding: 5px 14px;
+  font-size: 12px;
+  display: flex; align-items: center; gap: 6px;
+}
+.update-badge .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #69D98C;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.refresh-btn {
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.25);
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all .2s;
+}
+.refresh-btn:hover { background: rgba(255,255,255,0.25); }
+
+/* ── 메인 ── */
+main { max-width: 1280px; margin: 0 auto; padding: 28px 24px 48px; }
+
+/* ── KPI ── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.kpi {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+  transition: transform .2s;
+}
+.kpi:hover { transform: translateY(-2px); }
+.kpi::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--green);
+}
+.kpi-icon { font-size: 22px; margin-bottom: 8px; }
+.kpi-label { font-size: 12px; color: var(--text-2); font-weight: 400; margin-bottom: 4px; }
+.kpi-val { font-size: 28px; font-weight: 600; color: var(--green); font-family: 'DM Mono', monospace; }
+.kpi-sub { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+/* ── 차트 행 ── */
+.charts-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.chart-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+.chart-card h3 { font-size: 13px; font-weight: 500; color: var(--text-2); margin-bottom: 14px; }
+.chart-wrap { position: relative; width: 100%; }
+
+/* ── 지도 ── */
+.map-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  margin-bottom: 20px;
+}
+.map-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.map-header h3 { font-size: 13px; font-weight: 500; color: var(--text-2); }
+.map-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.map-toggle {
+  padding: 4px 12px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  cursor: pointer;
+  background: #fff;
+  color: var(--text-2);
+  transition: all .15s;
+  font-family: inherit;
+}
+.map-toggle.active { background: var(--green); color: #fff; border-color: var(--green); }
+#map { height: 380px; }
+
+/* ── 테이블 ── */
+.table-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.table-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.table-header h3 { font-size: 13px; font-weight: 500; color: var(--text-2); margin-right: 4px; }
+input[type="text"] {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  width: 200px;
+  font-family: inherit;
+  outline: none;
+  transition: border .2s;
+}
+input[type="text"]:focus { border-color: var(--green); }
+select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+  cursor: pointer;
+  outline: none;
+}
+.result-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-3);
+  font-family: 'DM Mono', monospace;
+}
+.tbl-wrap { overflow-x: auto; max-height: 320px; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  padding: 10px 16px;
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-2);
+  background: #FAFAF8;
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 1;
+  white-space: nowrap;
+}
+td { padding: 9px 16px; border-bottom: 1px solid var(--border); color: var(--text); }
+td.addr { color: var(--text-3); font-size: 12px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #F7FBF9; }
+.pill {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .4px;
+}
+.pill-dt { background: #E3F2FD; color: #1565C0; }
+.pill-rv { background: #FFF8E1; color: #F57F17; }
+.pill-gen { background: var(--green-bg); color: var(--green); }
+
+/* ── 푸터 ── */
+footer {
+  text-align: center;
+  padding: 24px;
+  font-size: 12px;
+  color: var(--text-3);
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+}
+footer a { color: var(--green); text-decoration: none; }
+
+/* ── 로딩 ── */
+#loading {
+  position: fixed; inset: 0;
+  background: var(--cream);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 9999;
+  gap: 16px;
+  transition: opacity .4s;
+}
+.loader {
+  width: 48px; height: 48px;
+  border: 3px solid var(--green-bg);
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loader-text { font-size: 14px; color: var(--text-2); }
+
+/* ── 반응형 ── */
+@media (max-width: 900px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .charts-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  header { padding: 16px 20px; }
+  main { padding: 20px 16px 40px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+}
+</style>
+</head>
+<body>
+
+<!-- 로딩 오버레이 -->
+<div id="loading">
+  <div class="loader"></div>
+  <div class="loader-text">매장 데이터 로딩 중...</div>
+</div>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">☕</div>
+    <div>
+      <h1>스타벅스 코리아 전국 매장 현황</h1>
+      <span>Starbucks Korea Store Dashboard</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="update-badge">
+      <span class="dot"></span>
+      <span id="updatedAt">로딩 중...</span>
+    </div>
+    <button class="refresh-btn" onclick="location.reload()">↻ 새로고침</button>
+  </div>
+</header>
+
+<main>
+  <!-- KPI -->
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="kpi-icon">🏪</div>
+      <div class="kpi-label">전체 매장 수</div>
+      <div class="kpi-val" id="kTotal">—</div>
+      <div class="kpi-sub">전국 17개 시·도</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-icon">🚗</div>
+      <div class="kpi-label">드라이브스루</div>
+      <div class="kpi-val" id="kDT">—</div>
+      <div class="kpi-sub" id="kDTpct">전체 대비 —%</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-icon">⭐</div>
+      <div class="kpi-label">리저브 매장</div>
+      <div class="kpi-val" id="kRV">—</div>
+      <div class="kpi-sub">프리미엄 체험 공간</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-icon">📍</div>
+      <div class="kpi-label">최다 밀집 지역</div>
+      <div class="kpi-val" id="kTop" style="font-size:20px">—</div>
+      <div class="kpi-sub" id="kTopSub">—</div>
+    </div>
+  </div>
+
+  <!-- 차트 -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <h3>지역별 매장 수</h3>
+      <div class="chart-wrap" style="height:220px">
+        <canvas id="regionChart" role="img" aria-label="지역별 스타벅스 매장 수"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <h3>구·군별 상위 15</h3>
+      <div class="chart-wrap" style="height:220px">
+        <canvas id="guChart" role="img" aria-label="구군별 매장 수 상위 15"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- 지도 -->
+  <div class="map-card">
+    <div class="map-header">
+      <h3>🗺️ 전국 매장 지도</h3>
+      <div class="map-filters">
+        <button class="map-toggle active" data-filter="all" onclick="setMapFilter(this,'all')">전체</button>
+        <button class="map-toggle" data-filter="dt" onclick="setMapFilter(this,'dt')">드라이브스루</button>
+        <button class="map-toggle" data-filter="rv" onclick="setMapFilter(this,'rv')">리저브</button>
+      </div>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <!-- 테이블 -->
+  <div class="table-card">
+    <div class="table-header">
+      <h3>매장 목록</h3>
+      <input type="text" id="searchInput" placeholder="매장명 또는 주소 검색…" oninput="renderTable()">
+      <select id="regionFilter" onchange="renderTable()">
+        <option value="">전체 지역</option>
+      </select>
+      <select id="typeFilter" onchange="renderTable()">
+        <option value="">전체 유형</option>
+        <option value="dt">드라이브스루</option>
+        <option value="rv">리저브</option>
+        <option value="gen">일반</option>
+      </select>
+      <span class="result-count" id="resultCount"></span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>매장명</th>
+            <th>지역</th>
+            <th>주소</th>
+            <th>유형</th>
+          </tr>
+        </thead>
+        <tbody id="tblBody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<footer>
+  데이터 출처: <a href="https://www.starbucks.co.kr" target="_blank">Starbucks Korea</a>
+  &nbsp;·&nbsp; 자동 업데이트: 매주 월요일
+  &nbsp;·&nbsp; <a href="https://github.com" target="_blank">GitHub Actions</a> 기반
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+// ── 상태 ───────────────────────────────────────────────────────────────────────
+let STORES    = [];
+let ALL_MARKERS = [];
+let mapInstance = null;
+let currentFilter = 'all';
+
+// ── 지역 색상 ──────────────────────────────────────────────────────────────────
+const REGION_COLORS = {
+  "서울":"#006241","경기":"#00A862","부산":"#D4813A","대구":"#8B4513",
+  "인천":"#1976D2","광주":"#7B1FA2","대전":"#C62828","울산":"#00838F",
+  "강원":"#558B2F","경남":"#E65100","경북":"#4527A0","전남":"#AD1457",
+  "전북":"#1565C0","충남":"#827717","충북":"#4E342E","제주":"#00695C","세종":"#37474F"
+};
+
+// ── 데이터 로드 ────────────────────────────────────────────────────────────────
+async function loadData() {
+  const res  = await fetch('./data/stores.json?v=' + Date.now());
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ── KPI 렌더 ───────────────────────────────────────────────────────────────────
+function renderKPI(data) {
+  document.getElementById('updatedAt').textContent = data.updated;
+  document.getElementById('kTotal').textContent = data.total.toLocaleString();
+  document.getElementById('kDT').textContent = data.dt_count.toLocaleString();
+  document.getElementById('kDTpct').textContent =
+    `전체의 ${((data.dt_count / data.total) * 100).toFixed(1)}%`;
+  document.getElementById('kRV').textContent = data.rv_count;
+
+  // 최다 지역
+  const sorted = Object.entries(data.region_stats).sort((a,b) => b[1].total - a[1].total);
+  const [topR, topS] = sorted[0];
+  document.getElementById('kTop').textContent = topR;
+  document.getElementById('kTopSub').textContent = `${topS.total.toLocaleString()}개 매장`;
+}
+
+// ── 차트 ───────────────────────────────────────────────────────────────────────
+function renderCharts(data) {
+  const regions = Object.entries(data.region_stats).sort((a,b) => b[1].total - a[1].total);
+  const rLabels = regions.map(r => r[0]);
+  const rNorm   = regions.map(r => r[1].total - r[1].dt);
+  const rDT     = regions.map(r => r[1].dt);
+
+  new Chart(document.getElementById('regionChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: rLabels,
+      datasets: [
+        { label: '일반', data: rNorm, backgroundColor: '#006241', borderWidth: 0, borderRadius: 2 },
+        { label: 'DT',   data: rDT,   backgroundColor: '#00A862', borderWidth: 0, borderRadius: 2 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { stacked: true, ticks: { font:{size:10}, color:'#888' }, grid: { display:false } },
+        y: { stacked: true, ticks: { font:{size:10}, color:'#888' }, grid: { color:'rgba(0,0,0,0.05)' } }
+      }
+    }
+  });
+
+  const guData = data.top_gu.slice(0, 15);
+  new Chart(document.getElementById('guChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: guData.map(g => g[0]),
+      datasets: [{ data: guData.map(g => g[1]), backgroundColor: '#CDA882', borderWidth: 0, borderRadius: 3 }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font:{size:10}, color:'#888' }, grid: { color:'rgba(0,0,0,0.05)' } },
+        y: { ticks: { font:{size:10}, color:'#888' }, grid: { display:false } }
+      }
+    }
+  });
+}
+
+// ── 지도 ───────────────────────────────────────────────────────────────────────
+function initMap(stores) {
+  mapInstance = L.map('map', { zoomControl: true }).setView([36.5, 127.8], 7);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors', maxZoom: 18
+  }).addTo(mapInstance);
+
+  stores.forEach(s => {
+    const color = REGION_COLORS[s.r] || '#006241';
+    const isDT  = s.dt === 1;
+    const isRV  = s.rv === 1;
+    const marker = L.circleMarker([s.lat, s.lng], {
+      radius: isDT ? 5 : 4,
+      fillColor: color,
+      color: '#fff',
+      weight: 0.5,
+      fillOpacity: 0.82
+    }).bindPopup(`
+      <b style="font-size:13px">${s.n}</b><br>
+      <span style="color:#666;font-size:11px">${s.r}</span><br>
+      <span style="color:#888;font-size:11px">${s.a}</span><br>
+      ${isDT ? '<span style="color:#1565C0;font-size:11px;font-weight:600">🚗 드라이브스루</span>' : ''}
+      ${isRV  ? '<span style="color:#F57F17;font-size:11px;font-weight:600">⭐ 리저브</span>' : ''}
+    `);
+    marker._storeType = isDT ? 'dt' : (isRV ? 'rv' : 'gen');
+    marker.addTo(mapInstance);
+    ALL_MARKERS.push(marker);
+  });
+
+  // 범례
+  const legend = L.control({ position: 'bottomright' });
+  legend.onAdd = () => {
+    const d = L.DomUtil.create('div');
+    d.style.cssText = 'background:rgba(255,255,255,0.92);padding:10px 12px;border-radius:8px;font-size:11px;line-height:1.9;box-shadow:0 2px 8px rgba(0,0,0,.12)';
+    d.innerHTML = Object.entries(REGION_COLORS).map(([r,c]) =>
+      `<span style="color:${c}">●</span> ${r}  `
+    ).join('') + '<br><span style="color:#1565C0">●</span> 드라이브스루 &nbsp;<span style="color:#006241">●</span> 일반';
+    return d;
+  };
+  legend.addTo(mapInstance);
+}
+
+function setMapFilter(btn, filter) {
+  currentFilter = filter;
+  document.querySelectorAll('.map-toggle').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  ALL_MARKERS.forEach(m => {
+    if (filter === 'all' || m._storeType === filter) {
+      if (!mapInstance.hasLayer(m)) m.addTo(mapInstance);
+    } else {
+      mapInstance.removeLayer(m);
+    }
+  });
+}
+
+// ── 테이블 ─────────────────────────────────────────────────────────────────────
+function renderTable() {
+  const q  = document.getElementById('searchInput').value.trim().toLowerCase();
+  const r  = document.getElementById('regionFilter').value;
+  const t  = document.getElementById('typeFilter').value;
+
+  const filtered = STORES.filter(s => {
+    if (r && s.r !== r) return false;
+    if (t === 'dt'  && s.dt !== 1) return false;
+    if (t === 'rv'  && s.rv !== 1) return false;
+    if (t === 'gen' && (s.dt === 1 || s.rv === 1)) return false;
+    if (q && !s.n.toLowerCase().includes(q) && !s.a.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  document.getElementById('resultCount').textContent =
+    `${filtered.length.toLocaleString()} / ${STORES.length.toLocaleString()}개`;
+
+  const tbody = document.getElementById('tblBody');
+  tbody.innerHTML = filtered.slice(0, 300).map(s => `
+    <tr>
+      <td>${s.n}</td>
+      <td>${s.r}</td>
+      <td class="addr" title="${s.a}">${s.a}</td>
+      <td>
+        ${s.dt ? '<span class="pill pill-dt">DT</span>' : ''}
+        ${s.rv ? '<span class="pill pill-rv">Reserve</span>' : ''}
+        ${!s.dt && !s.rv ? '<span class="pill pill-gen">일반</span>' : ''}
+      </td>
+    </tr>`).join('');
+}
+
+// ── 초기화 ─────────────────────────────────────────────────────────────────────
+(async () => {
+  try {
+    const data = await loadData();
+    STORES = data.stores;
+
+    renderKPI(data);
+    renderCharts(data);
+
+    // 지역 필터 옵션
+    const sel = document.getElementById('regionFilter');
+    Object.keys(data.region_stats)
+      .sort((a,b) => data.region_stats[b].total - data.region_stats[a].total)
+      .forEach(r => {
+        const o = document.createElement('option');
+        o.value = r;
+        o.textContent = `${r} (${data.region_stats[r].total})`;
+        sel.appendChild(o);
+      });
+
+    renderTable();
+
+    // 지도 초기화 (약간 지연하여 레이아웃 확정 후)
+    setTimeout(() => initMap(STORES), 150);
+
+    // 로딩 숨기기
+    const overlay = document.getElementById('loading');
+    overlay.style.opacity = '0';
+    setTimeout(() => overlay.style.display = 'none', 400);
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById('loading').innerHTML =
+      `<div style="text-align:center;color:#C62828">
+        <div style="font-size:32px;margin-bottom:12px">⚠️</div>
+        <div style="font-size:15px;font-weight:600">데이터 로드 실패</div>
+        <div style="font-size:13px;color:#666;margin-top:8px">${err.message}</div>
+        <div style="font-size:12px;color:#999;margin-top:6px">스크래퍼를 실행하여 data/stores.json 파일을 생성하세요.</div>
+        <button onclick="location.reload()" style="margin-top:16px;padding:8px 20px;background:#006241;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">재시도</button>
+      </div>`;
+  }
+})();
+</script>
+</body>
+</html>
