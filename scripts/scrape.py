@@ -46,19 +46,37 @@ def scrape():
         captured_responses = []
 
         def on_request(req):
-            if req.resource_type in ('xhr','fetch'):
-                captured_requests.append({'method': req.method, 'url': req.url, 'body': req.post_data or ''})
+            try:
+                if req.resource_type in ('xhr','fetch'):
+                    captured_requests.append({
+                        'method': req.method,
+                        'url': req.url,
+                        'body': req.post_data or ''
+                    })
+            except:
+                captured_requests.append({
+                    'method': req.method,
+                    'url': req.url,
+                    'body': ''
+                })
 
         def on_response(resp):
-            if resp.status == 200 and resp.resource_type in ('xhr','fetch'):
-                try:
-                    ct = resp.headers.get('content-type','')
-                    if 'json' in ct:
-                        d = resp.json()
-                        lst = d.get('list', d.get('stores', d.get('data', [])))
-                        if isinstance(lst, list) and len(lst) > 0:
-                            captured_responses.append({'url': resp.url, 'count': len(lst), 'data': d})
-                except: pass
+            if resp.status != 200:
+                return
+            try:
+                ct = resp.headers.get('content-type','')
+                if 'json' not in ct:
+                    return
+                d = resp.json()
+                lst = d.get('list', d.get('stores', d.get('data',[])))
+                if isinstance(lst, list) and len(lst) > 0:
+                    captured_responses.append({
+                        'url': resp.url,
+                        'count': len(lst),
+                        'data': d
+                    })
+            except:
+                pass
 
         page.on('request',  on_request)
         page.on('response', on_response)
