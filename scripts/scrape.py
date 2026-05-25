@@ -4,42 +4,8 @@ from datetime import datetime, timezone, timedelta
 
 KST = timezone(timedelta(hours=9))
 
-SIDO = {
-    "서울":("01","37.5665","126.9780"), "경기":("02","37.4138","127.5183"),
-    "인천":("03","37.4563","126.7052"), "강원":("04","37.8228","128.1555"),
-    "충북":("05","36.6357","127.4912"), "충남":("06","36.5184","126.8000"),
-    "대전":("07","36.3504","127.3845"), "경북":("08","36.4919","128.8889"),
-    "경남":("09","35.4606","128.2132"), "부산":("10","35.1796","129.0756"),
-    "울산":("11","35.5384","129.3114"), "대구":("12","35.8714","128.6014"),
-    "전북":("13","35.8202","127.1089"), "전남":("14","34.8679","126.9910"),
-    "광주":("15","35.1595","126.8526"), "제주":("16","33.4996","126.5312"),
-    "세종":("17","36.4801","127.2890"),
-}
-
-SIDO_CENTERS = {
-    "서울":("37.5665","126.9780"), "경기":("37.4138","127.5183"),
-    "인천":("37.4563","126.7052"), "강원":("37.8228","128.1555"),
-    "충북":("36.6357","127.4912"), "충남":("36.5184","126.8000"),
-    "대전":("36.3504","127.3845"), "경북":("36.4919","128.8889"),
-    "경남":("35.4606","128.2132"), "부산":("35.1796","129.0756"),
-    "울산":("35.5384","129.3114"), "대구":("35.8714","128.6014"),
-    "전북":("35.8202","127.1089"), "전남":("34.8679","126.9910"),
-    "광주":("35.1595","126.8526"), "제주":("33.4996","126.5312"),
-    "세종":("36.4801","127.2890"),
-}
-
-# getSidoList.do 인접 후보 엔드포인트 (우선순위 순)
-CANDIDATE_ENDPOINTS = [
-    "/store/getStoreList.do",
-    "/store/getStoreListJson.do",
-    "/store/getStoreListMap.do",
-    "/store/searchStore.do",
-    "/store/getMapStoreList.do",
-    "/store/storeMap.do",
-    "/store/getStoreInfo.do",
-    "/store/getLocaleStore.do",
-    "/store/getLocalStoreList.do",
-]
+SIDO_NAMES = ["서울","경기","인천","강원","충북","충남","대전",
+              "경북","경남","부산","울산","대구","전북","전남","광주","제주","세종"]
 
 def to_store(s, region):
     name = (s.get('s_name') or s.get('name') or '').strip()
@@ -55,46 +21,55 @@ def to_store(s, region):
         'rv': 1 if (name.endswith(' R') or '리저브' in name) else 0,
     }
 
-def try_endpoint(page, ep, sido_cd, lat, lng):
-    """브라우저 컨텍스트에서 POST/GET 둘 다 시도"""
-    body = f"ins_lat={lat}&ins_lng={lng}&p_sido_cd={sido_cd}&p_gugun_cd=&in_biz_cd=&set_date=&iend=2000"
-    result = page.evaluate(f"""
+def js_click(page, text):
+    page.evaluate(f"""
+    () => {{
+        Array.from(document.querySelectorAll('*'))
+            .filter(e => (e.textContent||'').trim() === '{text}' && e.children.length === 0)
+            .forEach(e => e.dispatchEvent(new MouseEvent('click', {{bubbles:true, cancelable:true}})));
+    }}
+    """)
+
+def is_store_response(data):
+    lst = data.get('list', data.get('stores', []))
+    if not isinstance(lst, list) or len(lst) == 0:
+        return False
+    sample = lst[0]
+    return bool(sample.get('s_name') or (sample.get('lat') and sample.get('lot')))
+
+def fetch_from_page(page, path, body):
+    return page.evaluate(f"""
     async () => {{
-        // POST 시도
         try {{
-            const r = await fetch('{ep}', {{
+            const r = await fetch('{path}', {{
                 method: 'POST',
                 credentials: 'include',
                 headers: {{
                     'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json, text/javascript, */*; q=0.01'
+                    'X-Requested-With': 'XMLHttpRequest'
                 }},
                 body: '{body}'
             }});
-            if (r.ok) {{
-                const d = await r.json();
-                return {{method:'POST', status:200, data:d}};
-            }}
-            // GET 시도
-            const r2 = await fetch('{ep}?{body}', {{
-                credentials: 'include',
-                headers: {{'X-Requested-With':'XMLHttpRequest', 'Accept':'application/json'}}
-            }});
-            if (r2.ok) {{
-                const d2 = await r2.json();
-                return {{method:'GET', status:200, data:d2}};
-            }}
-            return {{status: r.status}};
+            if (r.ok) return await r.json();
+            return {{error: r.status}};
         }} catch(e) {{
             return {{error: e.message}};
         }}
     }}
     """)
-    return result
 
 def scrape():
     all_stores = []
+    seen = set()
+
+    def add_stores(lst, region):
+        for s in lst:
+            store = to_store(s, region)
+            if store:
+                key = (store['n'], store['lat'], store['lng'])
+                if key not in seen:
+                    seen.add(key)
+                    all_stores.append(store)
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=['--no-sandbox','--disable-dev-shm-usage'])
@@ -104,86 +79,105 @@ def scrape():
         )
         page = ctx.new_page()
 
-        # 클릭으로 발생하는 모든 JSON 응답 캡처
-        click_responses = []
+        responses = []
         def on_response(resp):
             if resp.status == 200:
                 try:
-                    ct = resp.headers.get('content-type','')
-                    if 'json' in ct:
-                        d = resp.json()
-                        lst = d.get('list', d.get('stores', d.get('data',[])))
-                        if isinstance(lst, list) and len(lst) > 5:
-                            click_responses.append({'url': resp.url, 'data': d})
-                            print(f"  [캡처] {resp.url} → {len(lst)}개")
+                    if 'json' in resp.headers.get('content-type',''):
+                        responses.append({'url': resp.url, 'data': resp.json()})
                 except: pass
         page.on('response', on_response)
 
-        print("페이지 접속 중...")
+        print("페이지 접속...")
         page.goto('https://www.starbucks.co.kr/store/store_map.do?disp=locale',
                   wait_until='networkidle', timeout=30000)
         page.wait_for_timeout(3000)
 
-        # ── 1단계: 후보 엔드포인트 탐색 ─────────────────────────────
-        print("\n[1단계] 후보 엔드포인트 탐색 중...")
-        working_ep = None
-        working_method = None
-        test_sido, test_lat, test_lng = "01", "37.5665", "126.9780"
+        # ── 1. 서울 클릭 → 구군 목록 엔드포인트 ─────────────────
+        responses.clear()
+        js_click(page, '서울')
+        page.wait_for_timeout(2500)
 
-        for ep in CANDIDATE_ENDPOINTS:
-            result = try_endpoint(page, ep, test_sido, test_lat, test_lng)
-            status = result.get('status','?') if result else '?'
-            data   = result.get('data',{}) if result else {}
-            lst    = data.get('list', data.get('stores', data.get('data',[])))
-            if isinstance(lst, list) and len(lst) > 0:
-                print(f"  ✅ {ep} ({result.get('method')}) → {len(lst)}개!")
-                working_ep     = ep
-                working_method = result.get('method')
-                break
-            else:
-                print(f"  ✗  {ep} → {status}")
+        gugun_ep = next((r['url'] for r in responses if 'gugun' in r['url'].lower()), None)
+        gugun_data = next((r['data'] for r in responses if 'gugun' in r['url'].lower()), {})
+        seoul_guguns = gugun_data.get('list', gugun_data.get('data', []))
 
-        # ── 2단계: 작동 엔드포인트로 전 지역 수집 ───────────────────
-        if working_ep:
-            print(f"\n[2단계] 전 지역 수집: {working_ep}")
-            for region, (sido_cd, lat, lng) in SIDO.items():
-                print(f"  [{region}] ...", end=' ', flush=True)
-                result = try_endpoint(page, working_ep, sido_cd, lat, lng)
-                data   = result.get('data',{}) if result else {}
-                lst    = data.get('list', data.get('stores', data.get('data',[])))
-                if isinstance(lst, list):
-                    stores = [to_store(s, region) for s in lst]
-                    stores = [s for s in stores if s]
-                    all_stores.extend(stores)
-                    print(f"{len(stores)}개")
+        if not gugun_ep or not seoul_guguns:
+            print(f"구군 목록 실패: {[r['url'] for r in responses]}")
+            browser.close()
+            return []
+
+        gugun_path = '/' + '/'.join(gugun_ep.split('/')[3:]).split('?')[0]
+        print(f"구군 엔드포인트: {gugun_path} ({len(seoul_guguns)}개)")
+
+        # ── 2. 첫 구군 클릭 → 매장 엔드포인트 발견 ──────────────
+        first_name = seoul_guguns[0].get('gugun_nm', seoul_guguns[0].get('name',''))
+        responses.clear()
+        js_click(page, first_name)
+        page.wait_for_timeout(2500)
+
+        store_ep  = next((r['url'] for r in responses if is_store_response(r['data'])), None)
+        store_data = next((r['data'] for r in responses if is_store_response(r['data'])), {})
+
+        if not store_ep:
+            print(f"매장 엔드포인트 미발견. 캡처: {[r['url'] for r in responses]}")
+            browser.close()
+            return []
+
+        store_path = '/' + '/'.join(store_ep.split('/')[3:]).split('?')[0]
+        print(f"매장 엔드포인트: {store_path}")
+
+        # 첫 구군 매장 저장
+        add_stores(store_data.get('list', store_data.get('stores', [])), '서울')
+
+        # ── 3. 전 시/도 순회 ──────────────────────────────────────
+        for sido_nm in SIDO_NAMES:
+            # 구군 목록 가져오기
+            result = fetch_from_page(page, gugun_path, f'p_sido_nm={sido_nm}')
+            guguns = result.get('list', result.get('data', [])) if result and 'error' not in result else []
+
+            if not guguns:
+                js_click(page, sido_nm)
+                page.wait_for_timeout(1500)
+                gugun_resp = next((r['data'] for r in responses if 'gugun' in r['url'].lower()), {})
+                guguns = gugun_resp.get('list', gugun_resp.get('data', []))
+
+            if not guguns:
+                print(f"[{sido_nm}] 구군 목록 없음")
+                continue
+
+            sido_count = 0
+            print(f"[{sido_nm}] {len(guguns)}개 구군 수집 중...")
+
+            for gugun in guguns:
+                gname = gugun.get('gugun_nm', gugun.get('name',''))
+                gcd   = gugun.get('gugun_cd', gugun.get('cd',''))
+                if not gname:
+                    continue
+
+                # 매장 목록 직접 호출
+                body = f'p_sido_nm={sido_nm}&p_gugun_nm={gname}&p_gugun_cd={gcd}&iend=500'
+                result2 = fetch_from_page(page, store_path, body)
+
+                if result2 and 'list' in result2:
+                    lst = result2['list']
+                    add_stores(lst, sido_nm)
+                    sido_count += len(lst)
                 else:
-                    print(f"실패: {result}")
-                page.wait_for_timeout(300)
+                    # 클릭 폴백
+                    responses.clear()
+                    js_click(page, gname)
+                    page.wait_for_timeout(1200)
+                    for r in responses:
+                        if is_store_response(r['data']):
+                            lst2 = r['data'].get('list', r['data'].get('stores',[]))
+                            add_stores(lst2, sido_nm)
+                            sido_count += len(lst2)
+                            break
 
-        # ── 3단계: 엔드포인트 못 찾으면 UI 클릭으로 캡처 시도 ────────
-        else:
-            print("\n[3단계] UI 클릭으로 실제 API 탐색 중...")
-            for region in list(SIDO.keys())[:3]:
-                click_responses.clear()
-                page.evaluate(f"""
-                () => {{
-                    document.querySelectorAll('*').forEach(el => {{
-                        if ((el.textContent||'').trim() === '{region}'
-                            && el.children.length === 0) {{
-                            el.dispatchEvent(new MouseEvent('click',
-                                {{bubbles:true, cancelable:true}}));
-                        }}
-                    }});
-                }}
-                """)
-                page.wait_for_timeout(2500)
-                if click_responses:
-                    url = click_responses[-1]['url']
-                    print(f"  클릭 후 발견: {url}")
-                    break
+                page.wait_for_timeout(200)
 
-            print("\n⚠️  자동 탐색 실패.")
-            print("위 로그에 표시된 URL을 Claude에게 알려주세요.")
+            print(f"  → {sido_count}개")
 
         browser.close()
 
@@ -194,7 +188,9 @@ def build_summary(stores):
     for s in stores:
         r = s['r']
         if r not in rs: rs[r] = {'total':0,'dt':0,'rv':0}
-        rs[r]['total'] += 1; rs[r]['dt'] += s['dt']; rs[r]['rv'] += s['rv']
+        rs[r]['total'] += 1
+        rs[r]['dt'] += s['dt']
+        rs[r]['rv'] += s['rv']
         p = s['a'].split()
         if len(p) >= 2: gc[p[1]] = gc.get(p[1],0)+1
     return rs, sorted(gc.items(), key=lambda x:-x[1])[:15]
