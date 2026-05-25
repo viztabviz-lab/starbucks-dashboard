@@ -52,6 +52,7 @@ main { max-width:1280px;margin:0 auto;padding:28px 24px 48px; }
 .kpi-icon { font-size:22px;margin-bottom:8px; }
 .kpi-label { font-size:12px;color:var(--text-2);margin-bottom:4px; }
 .kpi-val { font-size:28px;font-weight:600;color:var(--green);font-family:'DM Mono',monospace; }
+.kpi-val.kpi-text { font-family:'Noto Sans KR',sans-serif;font-size:28px; }
 .kpi-sub { font-size:11px;color:var(--text-3);margin-top:4px; }
 
 .charts-row { display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:20px; }
@@ -91,7 +92,9 @@ thead th { padding:10px 16px;text-align:left;font-weight:500;color:var(--text-2)
 td { padding:9px 16px;border-bottom:1px solid var(--border); }
 td.addr { color:var(--text-3);font-size:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 tbody tr:last-child td { border-bottom:none; }
-tbody tr:hover { background:#F7FBF9; }
+tbody tr:hover { background:#F7FBF9; cursor:pointer; }
+tbody tr.selected-row { background:#E8F5EE; }
+tbody tr.selected-row td { color:var(--green); font-weight:500; }
 .pill { display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.4px; }
 .pill-dt { background:#E3F2FD;color:#1565C0; }
 .pill-rv { background:#FFF8E1;color:#F57F17; }
@@ -135,7 +138,7 @@ footer a { color:var(--green);text-decoration:none; }
     <div class="kpi"><div class="kpi-icon">🏪</div><div class="kpi-label">전체 매장 수</div><div class="kpi-val" id="kTotal">—</div><div class="kpi-sub">전국 17개 시·도</div></div>
     <div class="kpi"><div class="kpi-icon">🚗</div><div class="kpi-label">드라이브스루</div><div class="kpi-val" id="kDT">—</div><div class="kpi-sub" id="kDTpct">—</div></div>
     <div class="kpi"><div class="kpi-icon">⭐</div><div class="kpi-label">리저브 매장</div><div class="kpi-val" id="kRV">—</div><div class="kpi-sub">프리미엄 체험 공간</div></div>
-    <div class="kpi"><div class="kpi-icon">📍</div><div class="kpi-label">최다 밀집 지역</div><div class="kpi-val" id="kTop" style="font-size:20px">—</div><div class="kpi-sub" id="kTopSub">—</div></div>
+    <div class="kpi"><div class="kpi-icon">📍</div><div class="kpi-label">최다 밀집 지역</div><div class="kpi-val kpi-text" id="kTop">—</div><div class="kpi-sub" id="kTopSub">—</div></div>
   </div>
 
   <div class="charts-row">
@@ -187,6 +190,7 @@ footer a { color:var(--green);text-decoration:none; }
         <option value="rv">리저브</option>
         <option value="gen">일반</option>
       </select>
+      <span style="font-size:11px;color:var(--text-3)">행 클릭 시 지도 이동</span>
       <span class="result-count" id="resultCount"></span>
     </div>
     <div class="tbl-wrap">
@@ -450,6 +454,38 @@ function setMapFilter(btn, filter) {
   else                resetMapFilter();
 }
 
+// ── 매장 지도 이동 ────────────────────────────────────────────────────────────
+function zoomToStore(lat, lng, row) {
+  // 행 선택 표시
+  document.querySelectorAll('#tblBody tr').forEach(r => r.classList.remove('selected-row'));
+  row.classList.add('selected-row');
+
+  // 지도로 스크롤
+  document.getElementById('map').scrollIntoView({behavior:'smooth', block:'center'});
+
+  // 마커 찾기 (비가시 마커 포함)
+  const marker = ALL_MARKERS.find(m => {
+    const ll = m.getLatLng();
+    return Math.abs(ll.lat - lat) < 0.0002 && Math.abs(ll.lng - lng) < 0.0002;
+  });
+
+  setTimeout(() => {
+    mapInstance.setView([lat, lng], 17);
+    if (marker) {
+      // 숨겨진 마커면 임시 추가
+      if (!mapInstance.hasLayer(marker)) marker.addTo(mapInstance);
+      marker.openPopup();
+    } else {
+      L.popup({ closeOnClick: true })
+        .setLatLng([lat, lng])
+        .setContent(`<b>${row.cells[0].textContent}</b><br>
+          <span style="color:#666;font-size:11px">${row.cells[1].textContent}</span><br>
+          <span style="color:#888;font-size:11px">${row.cells[2].title}</span>`)
+        .openOn(mapInstance);
+    }
+  }, 500);
+}
+
 // ── 테이블 ───────────────────────────────────────────────────────────────────
 function renderTable() {
   const q = document.getElementById('searchInput').value.trim().toLowerCase();
@@ -469,7 +505,7 @@ function renderTable() {
     `${filtered.length.toLocaleString()} / ${STORES.length.toLocaleString()}개`;
 
   document.getElementById('tblBody').innerHTML = filtered.slice(0,300).map(s=>`
-    <tr>
+    <tr onclick="zoomToStore(${s.lat},${s.lng},this)">
       <td>${s.n}</td><td>${s.r}</td>
       <td class="addr" title="${s.a}">${s.a}</td>
       <td>
