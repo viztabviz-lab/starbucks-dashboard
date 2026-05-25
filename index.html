@@ -27,10 +27,13 @@ body { font-family: 'Noto Sans KR', sans-serif; background: var(--cream); color:
 
 header {
   background: var(--green); color: #fff;
-  padding: 20px 32px;
-  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+  padding: 20px 0;
   position: sticky; top: 0; z-index: 1000;
   box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+}
+.header-inner {
+  max-width: 1280px; margin: 0 auto; padding: 0 24px;
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
 }
 .logo { display: flex; align-items: center; gap: 12px; }
 .logo-icon { width:36px;height:36px;background:rgba(255,255,255,.15);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px; }
@@ -120,16 +123,18 @@ footer a { color:var(--green);text-decoration:none; }
 </div>
 
 <header>
-  <div class="logo">
-    <div class="logo-icon">☕</div>
-    <div>
-      <h1>스타벅스 코리아 전국 매장 현황</h1>
-      <span>Starbucks Korea Store Dashboard</span>
+  <div class="header-inner">
+    <div class="logo">
+      <div class="logo-icon">☕</div>
+      <div>
+        <h1>스타벅스 코리아 전국 매장 현황</h1>
+        <span>Starbucks Korea Store Dashboard</span>
+      </div>
     </div>
-  </div>
-  <div class="header-right">
-    <div class="update-badge"><span class="dot"></span><span id="updatedAt">로딩 중...</span></div>
-    <button class="refresh-btn" onclick="location.reload()">↻ 새로고침</button>
+    <div class="header-right">
+      <div class="update-badge"><span class="dot"></span><span id="updatedAt">로딩 중...</span></div>
+      <button class="refresh-btn" onclick="location.reload()">↻ 새로고침</button>
+    </div>
   </div>
 </header>
 
