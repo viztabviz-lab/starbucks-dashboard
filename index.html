@@ -223,6 +223,7 @@ let mapInstance  = null;
 let ALL_MARKERS  = [];
 let typeFilter   = 'all';
 let selectedRegion = null;
+let selectedGu     = null;
 let regionChartInst = null;
 let guChartInst     = null;
 
@@ -293,9 +294,13 @@ function renderRegionChart(data) {
 
 // ── 구군 차트 ────────────────────────────────────────────────────────────────
 function renderGuChart(guData) {
+  // 구군 필터 초기화 (데이터 변경 시)
+  selectedGu = null;
+
   if (guChartInst) {
-    guChartInst.data.labels                = guData.map(g=>g[0]);
-    guChartInst.data.datasets[0].data      = guData.map(g=>g[1]);
+    guChartInst.data.labels               = guData.map(g=>g[0]);
+    guChartInst.data.datasets[0].data     = guData.map(g=>g[1]);
+    guChartInst.data.datasets[0].backgroundColor = guData.map(()=>'#CDA882');
     guChartInst.update('active');
     return;
   }
@@ -311,9 +316,59 @@ function renderGuChart(guData) {
       scales: {
         x:{ ticks:{font:{size:10},color:'#888'}, grid:{color:'rgba(0,0,0,.05)'} },
         y:{ ticks:{font:{size:10},color:'#888'}, grid:{display:false} }
+      },
+      onClick: (event, elements) => {
+        if (elements.length > 0) {
+          const idx    = elements[0].index;
+          const guName = guChartInst.data.labels[idx];
+          if (selectedGu === guName) {
+            clearGuFilter();
+          } else {
+            filterMapByGu(guName);
+          }
+        }
+      },
+      onHover: (event, elements) => {
+        event.native.target.style.cursor = elements.length ? 'pointer' : 'default';
       }
     }
   });
+}
+
+// ── 구군 필터 ────────────────────────────────────────────────────────────────
+function filterMapByGu(guName) {
+  selectedGu = guName;
+  updateGuChartColors(guName);
+
+  ALL_MARKERS.forEach(m => {
+    const inGu     = m._gugun === guName;
+    const inRegion = !selectedRegion || m._region === selectedRegion;
+    const inType   = typeFilter === 'all' || m._storeType === typeFilter;
+    const show     = inGu && inRegion && inType;
+    if (show) { if (!mapInstance.hasLayer(m)) m.addTo(mapInstance); }
+    else       { mapInstance.removeLayer(m); }
+  });
+
+  const visible = ALL_MARKERS.filter(m => mapInstance.hasLayer(m));
+  if (visible.length > 0) {
+    try { mapInstance.fitBounds(L.featureGroup(visible).getBounds().pad(0.2)); } catch(e){}
+  }
+}
+
+function clearGuFilter() {
+  selectedGu = null;
+  updateGuChartColors(null);
+  if (selectedRegion) filterMapByRegion(selectedRegion);
+  else                resetMapFilter();
+}
+
+function updateGuChartColors(selected) {
+  if (!guChartInst) return;
+  guChartInst.data.datasets[0].backgroundColor =
+    guChartInst.data.labels.map(l =>
+      !selected || l === selected ? '#CDA882' : 'rgba(205,168,130,.2)'
+    );
+  guChartInst.update('active');
 }
 
 // ── 지역 필터 적용 ───────────────────────────────────────────────────────────
@@ -405,8 +460,10 @@ function initMap(stores) {
       ${isRV ? '<span style="color:#F57F17;font-size:11px;font-weight:600">⭐ 리저브</span>'      : ''}
     `);
 
+    const addrParts = (s.a||'').split(' ');
     marker._storeType = isDT ? 'dt' : (isRV ? 'rv' : 'gen');
     marker._region    = s.r;
+    marker._gugun     = addrParts.length >= 2 ? addrParts[1] : '';
     marker.addTo(mapInstance);
     ALL_MARKERS.push(marker);
   });
