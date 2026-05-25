@@ -14,17 +14,21 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          - name: 의존성 설치
+
+      - name: 의존성 설치
         run: |
           pip install playwright
           playwright install chromium --with-deps
+
       - name: 매장 데이터 수집
         run: python scripts/scrape.py
         env:
           PYTHONIOENCODING: utf-8
+
       - name: 커밋 & 푸시
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
