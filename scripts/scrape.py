@@ -17,8 +17,8 @@ def to_store(s, region):
     return {
         'r': region, 'n': name, 'a': addr,
         'lat': round(float(lat),5), 'lng': round(float(lng),5),
-        'dt': 1 if ('DT' in name or '드라이브' in name) else 0,
-        'rv': 1 if (name.endswith(' R') or '리저브' in name) else 0,
+        'dt': 1 if name.endswith('DT') else 0,
+        'rv': 1 if name.endswith('R') else 0,
     }
 
 def js_click(page, text):
