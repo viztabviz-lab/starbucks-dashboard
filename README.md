@@ -58,7 +58,7 @@ git push -u origin main
 
 ### 5. 완료
 
-`https://YOUR_USERNAME.github.io/starbucks-dashboard/` 에서 대시보드 확인 ✅
+`https://viztabviz-lab.github.io/starbucks-dashboard/` 에서 대시보드 확인 ✅
 
 ---
 
