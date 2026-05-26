@@ -227,9 +227,10 @@ let selectedGu     = null;
 let regionChartInst = null;
 let guChartInst     = null;
 
-// 스타벅스 브랜드 그린 (마커 고유 색상)
-const SBUX_GREEN  = '#006241';
-const SBUX_DARK   = '#004C32';
+// 유형별 색상 (지도 마커 ↔ 테이블 pill 통일)
+const COLOR_GEN = '#006241';   // 일반 — 스타벅스 그린
+const COLOR_DT  = '#1565C0';   // 드라이브스루 — 블루
+const COLOR_RV  = '#F57F17';   // 리저브 — 골드
 
 // ── 데이터 로드 ──────────────────────────────────────────────────────────────
 async function loadData() {
@@ -263,7 +264,7 @@ function renderRegionChart(data) {
     data: {
       labels: rLabels,
       datasets: [
-        { label:'일반', data:rNorm, backgroundColor:SBUX_GREEN, borderWidth:0, borderRadius:2 },
+        { label:'일반', data:rNorm, backgroundColor:COLOR_GEN, borderWidth:0, borderRadius:2 },
         { label:'DT',   data:rDT,   backgroundColor:'#00A862',  borderWidth:0, borderRadius:2 }
       ]
     },
@@ -431,7 +432,7 @@ function updateRegionChartColors(selected) {
   if (!regionChartInst) return;
   const labels = regionChartInst.data.labels;
   regionChartInst.data.datasets[0].backgroundColor = labels.map(l =>
-    !selected || l === selected ? SBUX_GREEN : 'rgba(0,98,65,.2)'
+    !selected || l === selected ? COLOR_GEN : 'rgba(0,98,65,.2)'
   );
   regionChartInst.data.datasets[1].backgroundColor = labels.map(l =>
     !selected || l === selected ? '#00A862' : 'rgba(0,168,98,.2)'
@@ -450,19 +451,21 @@ function initMap(stores) {
     const isDT = s.dt === 1;
     const isRV = s.rv === 1;
 
-    // 모든 마커 스타벅스 브랜드 그린 단일 색상
+    // 유형별 색상 통일 (테이블 pill과 동일 기준)
+    const fillColor = isRV ? COLOR_RV : (isDT ? COLOR_DT : COLOR_GEN);
+
     const marker = L.circleMarker([s.lat, s.lng], {
       radius:      isRV ? 7 : isDT ? 5.5 : 4.5,
-      fillColor:   SBUX_GREEN,
-      color:       isRV ? '#CDA882' : (isDT ? '#fff' : '#fff'),
-      weight:      isRV ? 2 : 1,
+      fillColor:   fillColor,
+      color:       '#fff',
+      weight:      1.5,
       fillOpacity: 0.88
     }).bindPopup(`
       <b style="font-size:13px">${s.n}</b><br>
       <span style="color:#666;font-size:11px">${s.r}</span><br>
       <span style="color:#888;font-size:11px">${s.a}</span><br>
-      ${isDT ? '<span style="color:#1565C0;font-size:11px;font-weight:600">🚗 드라이브스루</span>' : ''}
-      ${isRV ? '<span style="color:#F57F17;font-size:11px;font-weight:600">⭐ 리저브</span>'      : ''}
+      ${isDT ? '<span style="color:'+COLOR_DT+';font-size:11px;font-weight:600">🚗 드라이브스루</span>' : ''}
+      ${isRV ? '<span style="color:'+COLOR_RV+';font-size:11px;font-weight:600">⭐ 리저브</span>'      : ''}
     `);
 
     const addrParts = (s.a||'').split(' ');
@@ -479,10 +482,10 @@ function initMap(stores) {
     const d = L.DomUtil.create('div');
     d.style.cssText = 'background:rgba(255,255,255,.92);padding:10px 14px;border-radius:8px;font-size:11px;line-height:2;box-shadow:0 2px 8px rgba(0,0,0,.12)';
     d.innerHTML =
-      `<b style="display:block;margin-bottom:4px;font-size:12px">범 례</b>` +
-      `<span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:${SBUX_GREEN};border:1px solid #fff;display:inline-block"></span> 일반 매장</span>` +
-      `<span style="display:flex;align-items:center;gap:6px"><span style="width:11px;height:11px;border-radius:50%;background:${SBUX_GREEN};border:2px solid #CDA882;display:inline-block"></span> 리저브</span>` +
-      `<span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:${SBUX_GREEN};border:1px solid #fff;opacity:.9;display:inline-block"></span> 드라이브스루</span>`;
+      `<b style="display:block;margin-bottom:6px;font-size:12px">범 례</b>` +
+      `<span style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span style="width:11px;height:11px;border-radius:50%;background:${COLOR_GEN};border:1.5px solid #fff;display:inline-block;flex-shrink:0"></span> 일반 매장</span>` +
+      `<span style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span style="width:11px;height:11px;border-radius:50%;background:${COLOR_DT};border:1.5px solid #fff;display:inline-block;flex-shrink:0"></span> 드라이브스루</span>` +
+      `<span style="display:flex;align-items:center;gap:8px"><span style="width:11px;height:11px;border-radius:50%;background:${COLOR_RV};border:1.5px solid #fff;display:inline-block;flex-shrink:0"></span> 리저브</span>`;
     return d;
   };
   legend.addTo(mapInstance);
@@ -517,8 +520,9 @@ function setMapFilter(btn, filter) {
   typeFilter = filter;
   document.querySelectorAll('.map-toggle').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  if (selectedRegion) filterMapByRegion(selectedRegion);
-  else                resetMapFilter();
+  if (selectedGu)          filterMapByGu(selectedGu);
+  else if (selectedRegion) filterMapByRegion(selectedRegion);
+  else                     resetMapFilter();
 }
 
 // ── 매장 지도 이동 ────────────────────────────────────────────────────────────
