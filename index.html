@@ -158,7 +158,7 @@ footer a { color:var(--green);text-decoration:none; }
     </div>
     <div class="chart-card">
       <div class="chart-head">
-        <h3 id="guTitle">구·군별 상위 15</h3>
+        <h3 id="guTitle">시·군·구별 상위 15</h3>
         <div class="region-badge" id="regionBadge">
           <span id="badgeText"></span>
           <button onclick="clearFilter()" title="필터 해제">✕</button>
@@ -353,6 +353,9 @@ function filterMapByGu(guName) {
   if (visible.length > 0) {
     try { mapInstance.fitBounds(L.featureGroup(visible).getBounds().pad(0.2)); } catch(e){}
   }
+
+  // 매장 목록도 해당 시·군·구 기준으로 필터링
+  renderTable();
 }
 
 function clearGuFilter() {
@@ -360,6 +363,8 @@ function clearGuFilter() {
   updateGuChartColors(null);
   if (selectedRegion) filterMapByRegion(selectedRegion);
   else                resetMapFilter();
+  // 매장 목록 복원
+  renderTable();
 }
 
 function updateGuChartColors(selected) {
@@ -378,7 +383,7 @@ function applyRegionFilter(region, data) {
   // 배지 표시
   document.getElementById('badgeText').textContent = region;
   document.getElementById('regionBadge').classList.add('visible');
-  document.getElementById('guTitle').textContent = `${region} 구·군별 매장 수`;
+  document.getElementById('guTitle').textContent = `${region} 시·군·구별 매장 수`;
 
   // 지역 차트 색상 강조
   updateRegionChartColors(region);
@@ -405,7 +410,7 @@ function clearFilter() {
   selectedRegion = null;
 
   document.getElementById('regionBadge').classList.remove('visible');
-  document.getElementById('guTitle').textContent = '구·군별 상위 15';
+  document.getElementById('guTitle').textContent = '시·군·구별 상위 15';
 
   // 지역 차트 색상 초기화
   updateRegionChartColors(null);
@@ -559,6 +564,7 @@ function renderTable() {
     if (t === 'dt'  && s.dt !== 1) return false;
     if (t === 'rv'  && s.rv !== 1) return false;
     if (t === 'gen' && (s.dt===1||s.rv===1)) return false;
+    if (selectedGu && (s.a||'').split(' ')[1] !== selectedGu) return false;
     if (q && !s.n.toLowerCase().includes(q) && !s.a.toLowerCase().includes(q)) return false;
     return true;
   });
